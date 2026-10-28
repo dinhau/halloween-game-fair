@@ -1,0 +1,1 @@
+{"name":"lize-303-halloween-live","version":"4.0.0","private":true,"type":"module","description":"Staff-operated Halloween display and phone live game","engines":{"node":">=22 <25"},"scripts":{"start":"node server.mjs","test":"node --test tests/server.test.mjs"},"license":"UNLICENSED"}

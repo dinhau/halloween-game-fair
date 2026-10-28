@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: lize-303-halloween-live
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: live
+    buildCommand: npm ci && npm test
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

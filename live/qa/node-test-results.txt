@@ -1,0 +1,123 @@
+
+> lize-303-halloween-live@4.0.0 test
+> node --test tests/server.test.mjs
+
+TAP version 13
+# Subtest: 秒數判定：顯示值與 9.50–10.50 門檻一致
+ok 1 - 秒數判定：顯示值與 9.50–10.50 門檻一致
+  ---
+  duration_ms: 1.164667
+  type: 'test'
+  ...
+# Subtest: 即時服務與一局一次狀態機
+    # Subtest: 建立房間、讀取健康狀態
+    ok 1 - 建立房間、讀取健康狀態
+      ---
+      duration_ms: 5.564869
+      type: 'test'
+      ...
+    # Subtest: 未驗證不得讀狀態；跨網站 POST 拒絕
+    ok 2 - 未驗證不得讀狀態；跨網站 POST 拒絕
+      ---
+      duration_ms: 13.75542
+      type: 'test'
+      ...
+    # Subtest: 配對需要正確邀請且螢幕核准
+    ok 3 - 配對需要正確邀請且螢幕核准
+      ---
+      duration_ms: 42.851244
+      type: 'test'
+      ...
+    # Subtest: 螢幕不能開局，手機必須確認兩個資格
+    ok 4 - 螢幕不能開局，手機必須確認兩個資格
+      ---
+      duration_ms: 19.809302
+      type: 'test'
+      ...
+    # Subtest: 開局冪等，不增加重複挑戰者
+    ok 5 - 開局冪等，不增加重複挑戰者
+      ---
+      duration_ms: 8.403131
+      type: 'test'
+      ...
+    # Subtest: SSE 開啟即取得目前狀態，且不暴露主機權杖
+    ok 6 - SSE 開啟即取得目前狀態，且不暴露主機權杖
+      ---
+      duration_ms: 9.732403
+      type: 'test'
+      ...
+    # Subtest: 開始一次；計時中不得切換場景或更換控制者
+    ok 7 - 開始一次；計時中不得切換場景或更換控制者
+      ---
+      duration_ms: 24.213534
+      type: 'test'
+      ...
+    # Subtest: 手機成績送到伺服器，伺服器判定成功
+    ok 8 - 手機成績送到伺服器，伺服器判定成功
+      ---
+      duration_ms: 4.499583
+      type: 'test'
+      ...
+    # Subtest: 重複送出不能改成績或加次數；舊局識別碼拒絕
+    ok 9 - 重複送出不能改成績或加次數；舊局識別碼拒絕
+      ---
+      duration_ms: 10.212023
+      type: 'test'
+      ...
+    # Subtest: 禮物登記一次，重送不重複
+    ok 10 - 禮物登記一次，重送不重複
+      ---
+      duration_ms: 5.1469
+      type: 'test'
+      ...
+    # Subtest: 下一位需要確認並返回一般規則
+    ok 11 - 下一位需要確認並返回一般規則
+      ---
+      duration_ms: 6.29494
+      type: 'test'
+      ...
+    # Subtest: 失敗結果可同步，但不能領禮物
+    ok 12 - 失敗結果可同步，但不能領禮物
+      ---
+      duration_ms: 7.509081
+      type: 'test'
+      ...
+    # Subtest: 中斷不自動判輸，不自動開新機會
+    ok 13 - 中斷不自動判輸，不自動開新機會
+      ---
+      duration_ms: 14.815565
+      type: 'test'
+      ...
+    # Subtest: 延遲過大不亂判成敗
+    ok 14 - 延遲過大不亂判成敗
+      ---
+      duration_ms: 14.639581
+      type: 'test'
+      ...
+    # Subtest: 解除配對使舊手機失去控制
+    ok 15 - 解除配對使舊手機失去控制
+      ---
+      duration_ms: 6.906975
+      type: 'test'
+      ...
+    # Subtest: 服務檔案、快取政策及不存在的路徑
+    ok 16 - 服務檔案、快取政策及不存在的路徑
+      ---
+      duration_ms: 37.118745
+      type: 'test'
+      ...
+    1..16
+ok 2 - 即時服務與一局一次狀態機
+  ---
+  duration_ms: 289.274067
+  type: 'test'
+  ...
+1..2
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 425.890453
