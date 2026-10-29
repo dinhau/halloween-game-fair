@@ -1,8 +1,89 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#161023"><title>麗喆303班｜手機十秒封印術</title><link rel="stylesheet" href="/phone.css"></head><body>
-<header><a href="/">麗喆 <b>303</b> 班</a><span id="conn">○ 尚未配對</span></header>
-<main><div class="eyebrow">THE SECRET SEAL · LIVE CHALLENGE</div><h1>十秒<span>封印術</span></h1><p class="intro">一份勇氣，一次機會。<br>憑感覺，抓住神祕的十秒。</p>
-<section id="pair-stage" class="card"><h2>由工作人員手機掃描螢幕 QR</h2><p>螢幕端按「連線手機」建立房間，掃描後核對四位碼，再由螢幕核准。</p><div id="verify"></div><p id="pair-message"></p><button id="join-retry" hidden>重新提出配對</button></section>
-<section id="game-stage" class="card" hidden><div class="round-tag" id="round"></div><div id="game-content"></div></section>
-<p id="error" role="status" aria-live="polite"></p><p class="footnote">工作人員專用手機 · 不需填姓名<br>手機計時，螢幕揭曉 · 兩端均需保持連線</p>
-<button id="disconnect" class="quiet" hidden>重新配對手機</button></main>
-<script src="/shared.js"></script><script src="/phone.js"></script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#151225">
+  <title>手機十秒封印術｜麗喆303班</title>
+  <link rel="stylesheet" href="/phone.css?v=4.1.0">
+</head>
+<body data-screen="join">
+<main class="phone">
+  <header>
+    <a href="/" aria-label="麗喆303班活動首頁">麗喆 <b>303 班</b></a>
+    <span class="badge" id="connection" role="status">尚未配對</span>
+  </header>
+  <div class="intro">
+    <div class="eyebrow">SECRET CHALLENGE · LIVE</div>
+    <h1>十秒<span>封印術</span></h1>
+    <p class="subtitle">一次直覺，解鎖神祕小禮物。</p>
+  </div>
+  <div class="notice" id="phone-message" role="status" hidden></div>
+
+  <section id="join-panel" class="card screen-panel" aria-labelledby="join-title">
+    <div class="panel-heading"><div class="tag">工作人員專用</div><h2 id="join-title">手機配對</h2></div>
+    <p>大螢幕按 K 建立房間。掃 QR code，<br>或輸入六位配對碼。</p>
+    <label for="pair-input">配對碼</label>
+    <input id="pair-input" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="000000" enterkeyhint="done">
+    <button id="join" class="primary">連線到大螢幕</button>
+    <p class="muted">一個房間只配對一台控制手機。</p>
+  </section>
+
+  <section id="setup-panel" class="card screen-panel" hidden aria-labelledby="setup-title">
+    <div class="panel-heading"><div class="tag">工作人員確認 · 每人只有一次</div><h2 id="setup-title">下一位小勇士</h2></div>
+    <label class="check"><input type="checkbox" id="eligible"><span>鬼屋抽樓板<strong>第 1 次就成功</strong></span></label>
+    <label class="check"><input type="checkbox" id="exchanged"><span>孩子自願用 <strong>5 顆糖</strong>換挑戰；<br>已收回或先不發糖</span></label>
+    <div class="rule-note">保留糖果或換挑戰，兩者擇一。<br>成功領小禮物 1 份；失敗沒有禮物、不退糖。</div>
+    <div class="setup-actions">
+      <button id="prepare" class="primary" disabled>確認資格，開放本次挑戰</button>
+      <button id="show-secret" class="secondary">螢幕顯示隱藏關卡說明</button>
+    </div>
+  </section>
+
+  <section id="game-panel" class="screen-panel" hidden aria-label="觸控挑戰區">
+    <div class="stage-head"><span id="player-label">挑戰者</span><span class="one-chance">僅 1 次機會</span></div>
+    <button id="touch-pad" class="touch-pad" aria-describedby="target-rule">
+      <span class="seal-ring" aria-hidden="true">✦</span>
+      <strong id="tap-title">點一下開始</strong>
+      <span id="tap-sub">看不到秒數 · 心裡估計 10 秒</span>
+    </button>
+    <p class="target" id="target-rule">停在 <b>9.50～10.50</b> 秒成功 · 小禮物 <b>1</b> 份</p>
+    <button id="abort" class="text-button">工作人員：中止本局</button>
+  </section>
+
+  <section id="result-panel" class="result-card screen-panel" hidden aria-live="polite">
+    <div id="result-tag" class="tag"></div>
+    <h2 id="result-title"></h2>
+    <div id="result-number" class="result-number"></div>
+    <p id="result-text"></p>
+    <p class="pending" id="pending-text" hidden>結果保留在本機，尚未確認同步。請勿發獎，也不要關閉分頁。</p>
+    <div class="result-actions">
+      <button id="retry-sync" class="secondary" hidden>重試同步</button>
+      <button id="give-gift" class="primary" hidden>工作人員：確認已發小禮物 × 1</button>
+      <button id="next-player" class="secondary" hidden>結束本局，準備下一位</button>
+    </div>
+  </section>
+
+  <footer class="phone-footer">
+    <p id="round-info">本機計時 · 結果同步大螢幕</p>
+    <button id="open-staff" class="staff-trigger" aria-haspopup="dialog" aria-controls="staff-dialog">工作人員工具</button>
+  </footer>
+</main>
+
+<dialog id="staff-dialog" aria-labelledby="staff-title">
+  <div class="dialog-head"><h2 id="staff-title">工作人員工具</h2><button id="close-staff" class="close-dialog" aria-label="關閉工具">✕</button></div>
+  <div id="staff-tools">
+    <p>每人僅 1 次挑戰，9.50～10.50 秒（含兩端）成功。</p>
+    <p>請勿讓孩子自行重設。切到背景或重新整理計時頁面，會中止挑戰。</p>
+    <button id="return-house" class="secondary">螢幕回到鬼屋抽樓板</button>
+    <button id="export" class="secondary">匯出本房間結果 JSON</button>
+    <button id="reset-pair" class="text-button">清除這台手機的配對</button>
+    <p class="fine">不收集姓名、班號或個人資料。正式發獎以前，請確認同步成功。</p>
+    <p class="version">手機單畫面版 v4.1.0</p>
+  </div>
+  <button id="done-staff" class="primary">回到遊戲</button>
+</dialog>
+<noscript>請啟用瀏覽器 JavaScript，才能配對與遊玩。</noscript>
+<script src="/live-client.js"></script>
+<script src="/phone.js?v=4.1.0"></script>
+</body></html>

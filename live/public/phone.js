@@ -1,63 +1,110 @@
-(()=>{'use strict';
- const $=id=>document.getElementById(id),KEY='lize303-live-phone-v4',PENDING='lize303-live-finish-v4';
- let auth=Live.load(KEY),state=null,stopStream=null,poll=null,connected=false,started=null,startPromise=null,localPhase=null,submitting=false,requestId=Live.id(),lastRender='',wake=null,interrupted=false;
- const hash=new URLSearchParams(location.hash.slice(1));const invitation=hash.get('secret')?{room:hash.get('room'),code:hash.get('code'),secret:hash.get('secret')}:null;
- const err=msg=>$('error').textContent=msg||'';
- const api=(action,data)=>Live.request(`/api/rooms/${auth.room}/${action}`,data,auth.token);
- const setOnline=(yes,e)=>{connected=yes;$('conn').className=yes?'online':'';$('conn').textContent=yes?'● 已連線大螢幕':'○ 連線暫時中斷';if(e){err(e.message||'正在重新連線。計時已開始時，仍可按停止暫存結果。');if([401,410].includes(e.status)){stopStream?.();$('disconnect').hidden=false;}}if(state?.phase==='idle'){const b=$('arm');if(b)b.disabled=!yes||!$('eligible')?.checked||!$('exchange')?.checked;}if(yes&&Live.load(PENDING)&&!submitting)sendFinish();};
- async function holdScreen(){try{if(navigator.wakeLock)wake=await navigator.wakeLock.request('screen');}catch{}}
- function releaseScreen(){wake?.release().catch(()=>{});wake=null;}
- function accept(s){if(auth&&s.id!==auth.room)return;if(state&&s.version<state.version)return;state=s;$('pair-stage').hidden=true;$('game-stage').hidden=false;$('disconnect').hidden=false;
-  if(s.phase==='result'){Live.remove(PENDING);localPhase=null;started=null;releaseScreen();}
-  if(s.phase==='interrupted'){localPhase=null;started=null;releaseScreen();}
-  if(s.phase==='idle'){localPhase=null;started=null;interrupted=false;Live.remove(PENDING);requestId=Live.id();}
-  // A running round after refresh has lost its monotonic clock; do not grant a replay.
-  if(s.phase==='running'&&started===null&&!Live.load(PENDING)&&!interrupted){interrupted=true;api('interrupt',{roundId:s.round.id}).then(accept).catch(e=>err(e.message));}
+(() => {
+ 'use strict';const $=id=>document.getElementById(id);let state=null,link='offline',busy=false,flushing=false,localMode=null,started=0,provisional=null,outbox=[],blockError=false;
+ const OUT='lizhe-live-v4-outbox';const session=new Live.Session('phone',s=>{state=s;render();},status);
+ function message(text){$('phone-message').hidden=!text;$('phone-message').textContent=text;}
+ function save(){try{sessionStorage.setItem(OUT,JSON.stringify({room:session.creds?.id,outbox,provisional,localMode:localMode==='running'?'lost':localMode}));}catch{message('此瀏覽器無法保存斷線備份，請保持連線且不要關閉分頁。');}}
+ function status(s){link=s;$('connection').textContent={online:'已連線',polling:'備援同步',offline:'斷線重連中',connecting:'連線中',expired:'配對已失效'}[s]||s;$('connection').classList.toggle('online',['online','polling'].includes(s));
+  if(s==='expired'){blockError=true;message('房間或配對已失效。先保存本局資訊，請工作人員到螢幕重新建立房間。');}
   render();
  }
- async function join(){try{$('join-retry').hidden=true;err('');if(!invitation)throw new Error('請先掃描螢幕顯示的 QR code。');const d=await Live.request('/api/join',invitation);auth={room:d.room,token:d.token,request:d.request,verify:d.verify,approved:false};Live.save(KEY,auth);history.replaceState(null,'',location.pathname);await awaitApproval();}catch(e){err(e.message);$('join-retry').hidden=false;}}
- async function awaitApproval(){clearTimeout(poll);$('verify').textContent=auth.verify||'';$('pair-message').textContent='請在大螢幕核對此四位碼，按「核准」。';
-  try{const d=await api('pair-status',{request:auth.request});if(d.approved){auth.approved=true;Live.save(KEY,auth);accept(d.state);connect();}else poll=setTimeout(awaitApproval,1200);}catch(e){err(e.message);$('join-retry').hidden=!invitation;}}
- function connect(){stopStream?.();stopStream=Live.stream(auth.room,auth.token,accept,setOnline);}
- function staffHTML(){return `<div class="staff-box"><label class="check"><input id="next-check" type="checkbox">工作人員確認：這位已完成，換下一位。</label><button id="next" class="primary" disabled>下一位 · 回鬼屋抽樓板</button></div>`;}
- function render(){
-  if(!state)return;const phase=localPhase||state.phase;const sig=JSON.stringify([phase,state.round?.id,state.round?.result,state.round?.giftClaimed]);if(sig===lastRender)return;lastRender=sig;
-  $('round').textContent=state.round?`挑戰者 ${String(state.round.number).padStart(3,'0')} · 僅此一次`:'工作人員開局確認';const box=$('game-content');
-  if(phase==='idle'){
-   box.innerHTML=`<h2>要用 5 顆糖，換一次挑戰嗎？</h2><div class="rules">停在 <b>9.50～10.50 秒</b>（含兩端）<br>成功：<b>小禮物 1 份</b><br>未成功：沒有小禮物，糖果不退回。<br>每人只有一次，請先清楚說明。</div><label class="check"><input id="eligible" type="checkbox">這位同學抽樓板第 1 次就成功。</label><label class="check"><input id="exchange" type="checkbox">同學自願用 5 顆糖兌換，糖果已處理。</label><button id="arm" class="primary" disabled>確認資格 · 開放本局</button>`;
-   const check=()=>$('arm').disabled=!connected||!$('eligible').checked||!$('exchange').checked;for(const id of ['eligible','exchange'])$(id).onchange=check;
-   $('arm').onclick=async()=>{const button=$('arm');button.disabled=true;try{err('');accept(await api('arm',{eligible:true,exchange:true,requestId}));}catch(e){err(e.message);button.disabled=false;}};
-  }else if(phase==='ready'){
-   box.innerHTML=`<h2 class="center">準備好了嗎？</h2><p class="hint">目標時間</p><div class="target">10.00<small>秒</small></div><button id="touch" class="game-button" aria-label="開始封印計時">開始</button><p class="hint">點一下開始，心裡估計 10 秒。<br>再點一下停止。過程不顯示秒數。</p>`;bindTouch(start);
-  }else if(phase==='running'){
-   box.innerHTML=`<h2 class="center">封印進行中</h2><div class="target">??.??</div><button id="touch" class="game-button stop" aria-label="停止封印計時">停止</button><p class="hint">相信你的感覺。<br>覺得到了 10 秒，就按停止。</p>`;bindTouch(stop);
-  }else if(phase==='sending'){
-   box.innerHTML=`<h2 class="center">已停止，正在揭曉</h2><div class="target">✦</div><p class="pending">結果已鎖定，等待同步大螢幕。</p><p class="hint">請勿重新整理或再按開始。</p><button class="subtle" id="retry-result">重新傳送同一結果</button>`;$('retry-result').onclick=sendFinish;
-  }else if(phase==='interrupted'){
-   box.innerHTML=`<h2 class="center">本局已中止</h2><div class="target">—</div><p class="hint">裝置或連線中斷。<br>不自動判定成功或失敗，請工作人員處理。</p>${staffHTML()}`;bindNext();
-  }else if(phase==='result'){
-   const r=state.round.result;box.innerHTML=`<h2 class="result-title ${r.success?'':'failure'}">${r.success?'封印成功！':'差一點點！'}</h2><div class="target">${r.seconds}<small>秒</small></div><p class="prize">${r.success?'獲得小禮物 1 份':'謝謝你的勇敢挑戰！'}</p><p class="hint">成績已同步大螢幕。<br>成功範圍：9.50～10.50 秒。</p>${r.success?`<button class="primary" id="gift" ${state.round.giftClaimed?'disabled':''}>${state.round.giftClaimed?'✓ 小禮物已發放':'工作人員：登記已發小禮物'}</button>`:''}${staffHTML()}`;
-   if($('gift'))$('gift').onclick=()=>api('gift',{roundId:state.round.id}).then(accept).catch(e=>err(e.message));bindNext();
+ const connected=()=>session.creds&&['online','polling'].includes(link)&&Date.now()-session.lastContact<35000;
+ // v4.1 layout-only addition: fit the visible mobile viewport, keeping the tap target in place.
+ // Ignore pinch-zoom height changes; zooming remains available for accessibility.
+ let lastScreen='';
+ function fitViewport(){
+  if(window.visualViewport&&Math.abs(window.visualViewport.scale-1)>.02)return;
+  const h=Math.floor(Math.min(window.innerHeight,window.visualViewport?.height||window.innerHeight));
+  if(h>0)document.documentElement.style.setProperty('--phone-height',h+'px');
+ }
+ fitViewport();window.addEventListener('resize',fitViewport,{passive:true});
+ window.visualViewport?.addEventListener('resize',fitViewport,{passive:true});
+ window.addEventListener('orientationchange',()=>requestAnimationFrame(fitViewport),{passive:true});
+ const staffDialog=$('staff-dialog');
+ $('open-staff').addEventListener('click',()=>{if(!staffDialog.open)staffDialog.showModal();});
+ for(const id of ['close-staff','done-staff'])$(id).addEventListener('click',()=>staffDialog.close());
+ staffDialog.addEventListener('click',e=>{
+  if(e.target!==staffDialog)return;const r=staffDialog.getBoundingClientRect();
+  if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)staffDialog.close();
+ });
+ function panels(show){
+  for(const id of ['join-panel','setup-panel','game-panel','result-panel'])$(id).hidden=id!==show;
+  const next=show.replace('-panel','');document.body.dataset.screen=next;
+  if(next!==lastScreen){
+   lastScreen=next;
+   if(document.activeElement?.matches('input'))document.activeElement.blur();
+   if(staffDialog.open)staffDialog.close();
+   $(show).scrollTop=0;window.scrollTo(0,0);fitViewport();
   }
  }
- function bindNext(){ $('next-check').onchange=()=>$('next').disabled=!$('next-check').checked;$('next').onclick=()=>{if($('next-check').checked)api('next',{roundId:state.round.id,confirmed:true}).then(accept).catch(e=>err(e.message));};}
- function bindTouch(fn){const b=$('touch');b.addEventListener('pointerdown',e=>{if(!e.isPrimary||e.button!==0)return;e.preventDefault();fn();});b.addEventListener('keydown',e=>{if(!e.repeat&&[' ','Enter'].includes(e.key)){e.preventDefault();fn();}});}
- function start(){if(localPhase==='running'||started!==null||state?.phase!=='ready')return;if(!connected){err('請先恢復網路連線再開始。');return;}started=performance.now();localPhase='running';interrupted=false;err('');holdScreen();render();
-  startPromise=api('start',{roundId:state.round.id}).then(accept).catch(e=>{localPhase='interrupted';started=null;err(e.message);render();throw e;});startPromise.catch(()=>{});
+ function render(){
+  if(!session.creds){panels('join-panel');return;}
+  $('round-info').textContent=`本房間 ${state?.rounds||0} 局 · 已確認發出 ${state?.giftCount||0} 份禮物`;
+  if(localMode==='running') {panels('game-panel');$('touch-pad').disabled=false;$('touch-pad').classList.add('running');$('tap-title').textContent='點一下停止';$('tap-sub').textContent='時間藏起來了，跟著你的直覺。';$('abort').hidden=false;return;}
+  if(outbox.length||localMode==='stopped'||localMode==='interrupted'){
+   panels('result-panel');$('result-panel').classList.remove('success');$('result-tag').textContent='本局已結束，不能重試';$('result-title').textContent=localMode==='interrupted'?'挑戰已中止':'結果同步中';
+   $('result-number').textContent=provisional?.seconds||'—';$('result-text').textContent='正式結果以伺服器確認後的畫面為準。';$('pending-text').hidden=false;$('retry-sync').hidden=false;$('give-gift').hidden=true;$('next-player').hidden=true;return;
+  }
+  const q=state?.round;
+  if(!q){panels('setup-panel');$('prepare').disabled=!$('eligible').checked||!$('exchanged').checked||!connected()||busy;return;}
+  $('player-label').textContent=`第 ${String(q.number).padStart(3,'0')} 位挑戰者`;
+  if(q.phase==='ready'){
+   panels('game-panel');$('touch-pad').classList.remove('running');$('touch-pad').disabled=!connected()||busy;$('tap-title').textContent='點一下開始';$('tap-sub').textContent='看不到秒數 · 心裡估計 10 秒';$('abort').hidden=false;return;
+  }
+  if(q.phase==='running'){panels('result-panel');$('result-title').textContent='計時狀態待確認';$('result-tag').textContent='請勿重複開始';$('result-number').textContent='—';$('result-text').textContent='頁面可能曾重新整理，請工作人員中止本局。';$('pending-text').hidden=true;$('give-gift').hidden=true;$('next-player').hidden=true;$('retry-sync').hidden=false;return;}
+  panels('result-panel');const win=q.phase==='result'&&q.result?.win;
+  $('result-panel').classList.toggle('success',!!win);$('result-tag').textContent=`第 ${String(q.number).padStart(3,'0')} 位 · 結果已同步`;
+  $('result-title').textContent=q.phase==='interrupted'?'挑戰已中止':win?'封印成功！':'封印差一點！';
+  $('result-number').textContent=q.result?.seconds||'—';$('result-text').textContent=q.phase==='interrupted'?'請由工作人員確認，不自動重試。':win?(q.giftGiven?'小禮物已確認發放。':'獲得神祕小禮物 × 1！'):'謝謝挑戰！本次沒有小禮物，糖果不退回。';
+  $('pending-text').hidden=true;$('retry-sync').hidden=true;$('give-gift').hidden=!win||q.giftGiven;$('give-gift').disabled=!connected()||busy;
+  $('next-player').hidden=win&&!q.giftGiven;$('next-player').disabled=!connected()||busy;
  }
- function stop(){if(localPhase!=='running'||started===null)return;const elapsedMs=performance.now()-started;localPhase='sending';const pending={roundId:state.round.id,elapsedMs:Math.min(30000,elapsedMs)};
-  if(elapsedMs>30000){interrupt();return;}Live.save(PENDING,pending);err('');render();releaseScreen();sendFinish(pending);
+ function enqueue(type,extra={}){outbox.push({type,actionId:Live.uid(),...extra});save();flush();}
+ async function flush(){
+  if(flushing||!session.creds||!outbox.length||blockError)return;flushing=true;
+  try{while(outbox.length){await session.send(outbox[0]);outbox.shift();save();}
+   if(localMode!=='running'){localMode=null;provisional=null;}save();message('');render();
+  }catch(e){if(e.status&&e.status!==429&&e.status<500){blockError=true;message('同步未完成：'+e.message+' 請勿重試遊戲或發獎。');}else message('網路不穩，正在保留本局並重試同步。請留在這個頁面。');}
+  finally{flushing=false;render();}
  }
- async function sendFinish(data=Live.load(PENDING)){
-  if(submitting||!data||!auth)return;submitting=true;
-  try{if(startPromise)await startPromise;const s=await api('finish',data);Live.remove(PENDING);localPhase=null;started=null;accept(s);}catch(e){err(e.message+'\n結果已鎖定，請恢復連線後重傳，不要重新挑戰。');if([409,410,401].includes(e.status)){localPhase='interrupted';Live.remove(PENDING);render();}}
-  finally{submitting=false;}
+ async function recover(){
+  try{const saved=JSON.parse(sessionStorage.getItem(OUT)||'null');if(saved?.room===session.creds?.id){outbox=Array.isArray(saved.outbox)?saved.outbox:[];provisional=saved.provisional||null;localMode=provisional?'stopped':saved.localMode==='interrupted'?'interrupted':null;}}
+  catch{}
+  const pendingEnd=outbox.some(a=>['stop','abort'].includes(a.type));const pendingStart=outbox.find(a=>a.type==='start');
+  if(!pendingEnd&&(pendingStart||state?.phase==='running')){
+   localMode='interrupted';outbox.push({type:'abort',roundId:pendingStart?.roundId||state.round.id,actionId:Live.uid()});save();
+  }
+  if(outbox.length)flush();else render();
  }
- function interrupt(){if(!state?.round||!['ready','running'].includes(state.phase)&&localPhase!=='running')return;interrupted=true;localPhase='interrupted';started=null;Live.remove(PENDING);releaseScreen();render();api('interrupt',{roundId:state.round.id}).then(s=>{localPhase=null;accept(s);}).catch(e=>err(e.message));}
- $('join-retry').onclick=join;$('disconnect').onclick=()=>{if(['ready','running'].includes(state?.phase)){err('本局進行中，請先完成或由螢幕中止。');return;}if(confirm('清除這台手機的配對資料？清除後請重新掃描螢幕 QR。')){Live.remove(KEY);Live.remove(PENDING);location.href='/phone.html';}};
- document.addEventListener('visibilitychange',()=>{if(document.hidden&&(localPhase==='running'||state?.phase==='running'))interrupt();else if(!document.hidden&&state?.phase==='running'&&interrupted)interrupt();});
- window.addEventListener('pagehide',()=>{stopStream?.();releaseScreen();});
- window.addEventListener('online',()=>{if(Live.load(PENDING))sendFinish();});
- setInterval(()=>{if(auth?.approved&&!document.hidden)api('ping',{}).then(s=>{if(!state||s.version>state.version)accept(s);}).catch(e=>setOnline(false,e));},12000);
- if(invitation){join();}else if(auth?.approved){connect();api('state',undefined).then(accept).catch(e=>err(e.message));}else if(auth)awaitApproval();
+ async function control(fn){if(busy)return;busy=true;render();try{await fn();message('');}catch(e){message(e.message);}finally{busy=false;render();}}
+ $('join').onclick=()=>control(async()=>{
+  const code=$('pair-input').value.replace(/\D/g,'');if(code.length!==6)throw new Error('請輸入六位數字配對碼。');
+  const c=await Live.request('/api/pair',{method:'POST',data:{code}});outbox=[];provisional=null;localMode=null;blockError=false;session.adopt(c);history.replaceState(null,'',location.pathname);save();
+ });
+ for(const id of ['eligible','exchanged'])$(id).onchange=render;
+ $('prepare').onclick=()=>control(async()=>{if(!connected())throw new Error('請先恢復連線。');await session.action('prepare',{eligible:$('eligible').checked,exchanged:$('exchanged').checked});$('eligible').checked=false;$('exchanged').checked=false;});
+ function touch(){
+  if(localMode==='running'){
+   const ms=Math.max(0,Math.round(performance.now()-started));localMode='stopped';provisional={milliseconds:ms,seconds:(Math.round(ms/10)/100).toFixed(2)};
+   enqueue(ms<=120000?'stop':'abort',{roundId:state.round.id,...(ms<=120000?{milliseconds:ms}:{})});render();return;
+  }
+  if(state?.phase!=='ready'||!connected()||outbox.length||localMode)return;
+  started=performance.now();localMode='running';enqueue('start',{roundId:state.round.id});render();
+ }
+ let lastPointerAt=-Infinity;
+ $('touch-pad').addEventListener('pointerdown',e=>{if(e.button!==0||$('touch-pad').disabled)return;lastPointerAt=performance.now();e.preventDefault();touch();});
+ // Mobile may emit a zero-detail synthetic click after pointerdown. Do not count one tap twice.
+ $('touch-pad').addEventListener('click',e=>{if(e.detail===0&&performance.now()-lastPointerAt>700&&!$('touch-pad').disabled)touch();});
+ function interrupt(){if(!state?.round||!['running','ready'].includes(state.phase)&&localMode!=='running')return;localMode='interrupted';provisional=null;enqueue('abort',{roundId:state.round.id});render();}
+ $('abort').onclick=()=>{if(confirm('確定中止本局？不會自動獲得重試機會。'))interrupt();};
+ $('retry-sync').onclick=()=>{if(blockError){message('此局需要工作人員確認。請先匯出紀錄，勿重新挑戰冒領。');return;}if(state?.phase==='running'&&localMode!=='running'&&!outbox.length)interrupt();else flush();};
+ $('give-gift').onclick=()=>control(async()=>{await session.action('gift',{roundId:state.round.id});});
+ $('next-player').onclick=()=>{if(!confirm('已確認本局結果，結束並準備下一位？'))return;control(async()=>{await session.action('next',{roundId:state.round.id});$('eligible').checked=false;$('exchanged').checked=false;});};
+ $('show-secret').onclick=()=>control(()=>session.action('scene',{scene:'seal'}));$('return-house').onclick=()=>control(()=>session.action('scene',{scene:'house'}));
+ $('reset-pair').onclick=()=>{if(!confirm('清除手機配對？有未同步結果時請先匯出，並通知大螢幕操作員。'))return;session.clear();outbox=[];localMode=null;provisional=null;blockError=false;sessionStorage.removeItem(OUT);state=null;message('');render();};
+ $('export').onclick=()=>{const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(),room:state?.id,rounds:state?.history||[],current:state?.round,pending:outbox,provisional},null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='麗喆303班_闖關紀錄_'+Date.now()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),2000);};
+ document.addEventListener('visibilitychange',()=>{if(document.hidden&&localMode==='running')interrupt();else if(!document.hidden&&session.creds){session.refresh().catch(()=>{});flush();}});
+ window.addEventListener('pagehide',()=>{if(localMode==='running')interrupt();if(session.creds&&outbox.length){fetch(session.url('action'),{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.creds.token},body:JSON.stringify(outbox[0]),keepalive:true}).catch(()=>{});}});
+ window.addEventListener('online',()=>{flush();if(session.creds)session.refresh().catch(()=>{});});setInterval(flush,2000);
+ const code=new URLSearchParams(location.hash.slice(1)).get('code');if(code&&/^\d{6}$/.test(code))$('pair-input').value=code;
+ if(session.creds){session.refresh().then(async()=>{await recover();session.connect();}).catch(e=>{message(e.message);if([401,410].includes(e.status))session.clear();render();});}else render();
 })();
