@@ -1,0 +1,117 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>上傳與現場操作說明｜麗喆303班</title><style>body{margin:0;background:#f6f3ee;color:#302637;font-family:"PingFang TC","Microsoft JhengHei",sans-serif}main{max-width:920px;margin:40px auto;padding:30px;background:white;border-radius:18px}h1{font-size:32px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.8;font-size:16px}a{color:#5c3886}@media(max-width:600px){main{margin:0;padding:24px}}@media print{main{padding:0;margin:0}pre{font-size:11pt}}</style></head><body><main><h1>部署與現場操作說明</h1><p>麗喆303班・雙螢幕即時闖關 v4</p><pre># 麗喆 303 班｜手機挑戰 × 大螢幕同步 v4
+
+**這是完整、可自行部署的程式包，不是已經上線的網站。**
+
+## 最簡單上線方式：一個 GitHub 倉庫 + 一個 Render Web Service
+
+1. 解壓縮此包。建議另建 GitHub 倉庫 `halloween-live-303`，不動原本 GitHub Pages 網站。
+2. 把本資料夾「裡面的檔案與資料夾」全部上傳到新倉庫根目錄。
+   正確：根目錄直接看得到 `package.json`、`server.mjs`、`public/`、`vendor/`。
+   不要只上傳 ZIP，也不要只上傳 HTML。
+3. Render → New → **Web Service**（不是 Static Site），連接新倉庫。
+4. 依下面填寫，再部署。
+
+| 欄位 | 值 |
+|---|---|
+| Language / Runtime | Node |
+| Branch | main（或實際分支） |
+| Root Directory | 留空，前提是上述檔案在倉庫根目錄 |
+| Build Command | `npm ci --omit=dev --ignore-scripts` |
+| Start Command | `npm start` |
+| Health Check Path | `/healthz` |
+| NODE_VERSION 環境變數 | `22` |
+| 執行個體數 | **1**，不可多實例 |
+
+可選：在 Render Environment 新增 `EVENT_PIN` 作為「建立房間」的活動密碼。
+請在 Render 的環境變數設定，不要把密碼寫入 GitHub。手機仍以臨時配對碼加入。
+
+已附 `render.yaml`，熟悉 Blueprint 的人可用 New → Blueprint 匯入；不要同時用兩種方式重複建立服務。
+Blueprint 明確預設 Free。活動使用的付費機型請自行在 Render 確認費用後選擇。
+
+## 部署後的兩個入口
+
+以 Render 實際提供的網域為準，以下 BASE 是示意佔位符，不是已開通的網址：
+
+- 大螢幕：`BASE/display`
+- 工作人員手機：`BASE/phone`
+- 操作說明：`BASE/guide`
+- 原活動提案：`BASE/halloween-game-fair.html`
+- 無同步的原 v3 展示備用：`BASE/standalone.html`
+
+兩個裝置都開同一個 Render 服務的網址。不要一個開舊 GitHub Pages、另一個開新 Render。
+上線後手機和電腦只要都可上網，不必同一 Wi-Fi。同步顯示有網路延遲，但不拿延遲當成績。
+
+## 現場流程
+
+1. 電腦開 `/display` →「建立連線房間」。設定了 EVENT_PIN 才會要求活動密碼。
+2. 工作人員手機掃畫面上的 QR code，按「連線到大螢幕」；或開 `/phone` 輸入六位配對碼。
+3. 大螢幕按「開始展示」，再按 F 全螢幕、M 啟用音樂；K 可叫出配對設定。
+4. 抽樓板第一次成功，工作人員問孩子要保留 5 顆糖，或自願換一次隱藏挑戰。
+5. 手機勾選兩項資格確認，按「確認資格，開放本次挑戰」。大螢幕自動顯示十秒封印術規則。
+6. 孩子在工作人員手機上「開始 → 停止」，計時期間兩邊都不顯示秒數或進度。
+7. 停止後螢幕顯示結果：成功／差一點、秒數與獎勵；成功有紙花及短音效（須先開聲音）。
+8. 成功者由手機按「確認已發小禮物 × 1」，再按「結束本局，準備下一位」。螢幕回抽樓板。
+
+快捷鍵：F 全螢幕、S 切換規則、G 回抽樓板、M 音樂、A 動畫、H 操作列、K 配對。
+計時進行中不允許 S/G 切換，以免掩蓋挑戰狀態。
+規則：每人一次，9.50～10.50 秒（含兩端，以顯示的兩位小數為準）成功得 1 份小禮物。
+5 顆糖是兌換資格，成功不另外加糖；失敗不退糖。
+
+## 斷線、重整與限制（請讀）
+
+- 計時用手機的 `performance.now()`；伺服器只接收毫秒，依四捨五入後兩位小數判分。
+- 兩次按下的觸控/裝置反應仍可能有微小差異。本工具不是專業計時器。
+- 使用「一台工作人員控制手機」；一個房間只配對一台。多人各持手機自由參加不在本版範圍。
+- 開始後網路斷線：手機保留尚未送出的開始/停止操作，會嘗試補送；不要關閉分頁。
+- 顯示「尚未同步」時勿發獎。同步成功才出現正式結果和發獎按鈕。
+- 中途切到背景、離開或重整計時頁面，會中止本局；工作人員處理，不自動贈送重試。
+- 背景自動重連；已完成的結果重新整理後仍由伺服器恢復，不能直接再按開始。
+- 同步不是硬即時保證。雲端/網路延遲時，手機成績仍按本機時間，大螢幕可能稍後才更新。
+- 房間/結果/禮物計數放在單一服務的記憶體，沒有資料庫；服務重啟、重新部署或閒置休眠後會消失。
+  **包括發獎紀錄**；重啟後請人工核對禮物，不要重發。工作人員工具可匯出 JSON，保留最近200局。
+- 不同裝置不共享舊版「700 顆糖果庫」，本版只統計隱藏關卡與已確認的小禮物。
+- 不收集學生姓名。系統限制的是每局一次，不是辨識同一個孩子；資格由老師現場把關。
+- QR code 與配對碼僅供工作人員；配對碼10分鐘有效、使用後失效。新配對會撤銷原手機。
+- 憑證存在該裝置的 sessionStorage；關閉分頁可能失去憑證，需重新配對。勿分享手機控制頁。
+- 本版信任工作人員操作手機，不防範修改瀏覽器程式或偽造成績；不適合高價獎勵競賽。
+- 免費 Render Web Service 閒置15分鐘可能休眠，重新啟動可能需約1分鐘，也可能隨時重啟。
+  免費適合事前測試。正式活動建議自行選擇不閒置休眠的付費執行個體，仍需保持網路及備援。
+- 不需把公開瀏覽用的 GitHub 倉庫改成公開；可用你授權 Render 存取的私人倉庫。
+
+## 本機試跑 / 現場區域網路備援
+
+電腦先安裝 Node.js 22 或24。終端機進入此資料夾：
+
+```sh
+npm start
+```
+
+電腦瀏覽 `http://localhost:3000/display`。手機連同一 Wi-Fi，使用電腦的區域網路 IP：
+`http://電腦區域網路IP:3000/phone`，輸入電腦的配對碼。
+要用 QR code，電腦也請用同一個區域網路 IP 開 `/display`，不要用 localhost 產生給手機的 QR。
+請允許 Node 的本機網路連線；學校 Wi-Fi 若有裝置隔離，需改用允許互連的熱點/網路。
+HTTP 本機網路沒有傳輸加密，只作可信任網路備援；正式雲端用 HTTPS。
+本專案沒有 npm 執行期套件相依，QR 產生器已附授權放在 vendor。
+
+## 測試
+
+```sh
+npm test
+```
+
+測試涵蓋秒數邊界、一次機會、冪等重送、防重複發禮物、配對、憑證失效、SSE 狀態傳送。
+尚未在你的 Render 帳號實際部署；實機手機觸控、喇叭及活動網路請務必在現場試跑。
+詳細驗證紀錄見 `qa/VALIDATION.md`。
+
+## 原始資料及授權
+
+沿用本討論先前的 v3 展示動畫、內建配樂與圖文規則。QR 程式使用 qrcode-terminal 所附 QRCode
+for JavaScript（Kazuhiko Arase），授權見 vendor/LICENSE-qrcode-terminal.txt 及原始碼註記。
+
+官方部署參考（查閱日期：2026-10-29）：
+- https://render.com/docs/deploy-node-express-app
+- https://render.com/docs/free
+- https://render.com/docs/node-version
+- https://render.com/docs/blueprint-spec
+- https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages
+</pre></main></body></html>
