@@ -1,4 +1,4 @@
-/* 麗喆 303 班 — v4.2.0 responsive signage geometry.
+/* 麗喆 303 班 — v4.2.1 responsive signage geometry.
  * A viewport resize changes layout only. It never reconnects a room, restarts a
  * round, changes the scene, or recreates the audio graph.
  * Physical rotation must first be reflected by the browser / operating system.
@@ -16,7 +16,7 @@
   const baseHeight = portrait ? 1600 : 900;
   const scale = Math.min(width / baseWidth, height / baseHeight);
   root.dataset.layout = layout;
-  root.dataset.displayVersion = '4.2.0';
+  root.dataset.displayVersion = '4.2.1';
   root.style.setProperty('--board-w', baseWidth + 'px');
   root.style.setProperty('--board-h', baseHeight + 'px');
   root.style.setProperty('--scale', String(scale));
@@ -24,7 +24,7 @@
   const label = document.getElementById('layout-info');
   if (label) {
    label.textContent = (portrait ? '直式' : '橫式') + '・自動';
-   label.title = `v4.2.0｜可見範圍 ${width} × ${height}；自動重排，不重整遊戲。`;
+   label.title = `v4.2.1｜可見範圍 ${width} × ${height}；自動重排，不重整遊戲。`;
   }
   // Decorative SVG uses the whole portrait canvas; game demonstration SVG
   // retains its original viewBox so cup/card motion is never distorted.
@@ -32,7 +32,7 @@
    if (!svg.dataset.originalViewbox) svg.dataset.originalViewbox = svg.getAttribute('viewBox');
    svg.setAttribute('viewBox', portrait ? '0 0 900 1600' : svg.dataset.originalViewbox);
   });
-  current = Object.freeze({version:'4.2.0',layout,width,height,baseWidth,baseHeight,scale});
+  current = Object.freeze({version:'4.2.1',layout,width,height,baseWidth,baseHeight,scale});
  }
  function queueResize() {
   if (frame) return;

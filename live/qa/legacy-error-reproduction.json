@@ -1,0 +1,15 @@
+{
+  "matchedGitHubServerBlob": "a9d6d27b15fcc63b5a4606121ad27f529791ee25",
+  "createStatus": 201,
+  "responseFields": [
+    "room",
+    "token",
+    "state"
+  ],
+  "frontendExpectedId": null,
+  "nextRequest": "/api/rooms/undefined/pairing",
+  "status": 404,
+  "body": {
+    "error": "找不到 API"
+  }
+}

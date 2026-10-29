@@ -1,110 +1,164 @@
-/** 麗喆303班 live game relay. Node >=22, zero runtime dependencies.
- * Single-process, ephemeral rooms. Staff-controlled timing, not an anti-cheat system.
- * No children's names, cookies, telemetry, or third-party requests.
+/** Single-instance event server. No database or external runtime dependencies.
+ * Staff controls the phone. Timing is measured on the phone, NOT via network RTT.
+ * Rooms and results live in RAM; a process restart requires pairing again.
  */
 import http from 'node:http';
-import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import {randomBytes, randomInt, timingSafeEqual} from 'node:crypto';
+import {readFile, stat} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const QRCode=require('./vendor/QRCode/index.js');
 const ROOT=path.join(path.dirname(fileURLToPath(import.meta.url)),'public');
-const token=()=>randomBytes(24).toString('hex');
-const eq=(a,b)=>typeof a==='string'&&typeof b==='string'&&a.length===b.length&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
-export const score=ms=>{if(!Number.isFinite(ms)||ms<0||ms>30000)throw new Error('無效秒數');const cs=Math.round(ms/10);return {centiseconds:cs,seconds:(cs/100).toFixed(2),success:cs>=950&&cs<=1050};};
-class APIError extends Error{constructor(status,message){super(message);this.status=status;}}
-const fail=(status,msg)=>{throw new APIError(status,msg);};
-export function createApp({now=()=>Date.now(),maxRooms=40,rateLimits=true}={}){
- const rooms=new Map(),limits=new Map();
- const emit=(res,event,data)=>res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
- const view=(r,role)=>({id:r.id,version:r.version,scene:r.scene,phase:r.phase,round:r.round?{id:r.round.id,number:r.round.number,result:r.round.result??null,giftClaimed:!!r.round.giftClaimed,reason:r.round.reason??null}:null,connected:!!r.controller,stats:{...r.stats},...(role==='host'?{pairCode:r.code,pairSecret:r.secret,pending:r.pending.map(p=>({id:p.id,verify:p.verify})),history:r.history.slice(-200)}:{})});
- function broadcast(r){r.version++;r.touched=now();for(const c of r.clients){if(c.res.destroyed){r.clients.delete(c);continue;}emit(c.res,'state',view(r,c.role));}}
- function interrupt(r,reason){if(!['ready','running'].includes(r.phase))return;r.phase='interrupted';r.round.reason=reason;broadcast(r);}
- function auth(req,r){const key=(req.headers.authorization||'').replace(/^Bearer /,'');if(eq(key,r.host))return 'host';if(r.controller&&eq(key,r.controller))return 'controller';fail(401,'配對失效，請重新連線。');}
- const requireHost=role=>{if(role!=='host')fail(403,'此操作只限螢幕工作人員。');};
- function limited(req,kind,count,windowMs){if(!rateLimits)return;const ip=(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').toString().split(',')[0].trim();const key=kind+':'+ip;let l=limits.get(key);if(!l||now()>l.until){l={n:0,until:now()+windowMs};limits.set(key,l);}if(++l.n>count)fail(429,'操作太頻繁，請稍後再試。');}
- async function readJSON(req){if(!String(req.headers['content-type']||'').startsWith('application/json'))fail(415,'請使用 JSON');let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>8192)fail(413,'資料過大');}try{return JSON.parse(raw||'{}');}catch{fail(400,'JSON 格式錯誤');}}
- function reply(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
+export const APP_VERSION='4.2.1';
+export const API_PROTOCOL='lizhe303-rooms-v1';
+const token=()=>randomBytes(32).toString('hex');
+const fault=(status,message)=>Object.assign(new Error(message),{status});
+const equal=(a,b)=>{if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);};
+export function scoreMilliseconds(ms){
+  if(!Number.isInteger(ms)||ms<0||ms>120000)throw fault(400,'無效的計時數值。');
+  const centiseconds=Math.round(ms/10);
+  return {milliseconds:ms,centiseconds,seconds:(centiseconds/100).toFixed(2),win:centiseconds>=950&&centiseconds<=1050};
+}
+export function makeQR(text){
+  const qr=new QRCode(-1,0);qr.addData(text);qr.make();
+  const n=qr.getModuleCount(),p=4;let d='';
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(qr.isDark(y,x))d+=`M${x+p} ${y+p}h1v1h-1z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n+8} ${n+8}" role="img" aria-label="工作人員手機配對 QR code"><path fill="white" d="M0 0h${n+8}v${n+8}H0z"/><path fill="black" d="${d}" shape-rendering="crispEdges"/></svg>`;
+}
+export function createApp({eventPin=process.env.EVENT_PIN||'',clock=()=>Date.now(),roomTTL=12*3600*1000}={}){
+ const rooms=new Map(), limits=new Map();
+ const headers={
+  'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',
+  'X-Frame-Options':'SAMEORIGIN',
+  'Content-Security-Policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+ };
+ function limit(req,name,max,windowMs=60000){
+  const ip=(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',')[0].trim();
+  const key=name+':'+ip;let e=limits.get(key);if(!e||clock()-e.start>windowMs)e={start:clock(),n:0};
+  e.n++;limits.set(key,e);if(e.n>max)throw fault(429,'操作太頻繁，請稍後再試。');
+ }
+ function snapshot(r,role){
+  return {id:r.id,revision:r.rev,scene:r.scene,phase:r.round?.phase||'idle',round:r.round,
+   paired:!!r.phoneToken,phoneOnline:[...r.clients].some(c=>c.role==='phone'),
+   displayOnline:[...r.clients].some(c=>c.role==='host'),giftCount:r.giftCount,
+   rounds:r.counter,history:r.history,
+   ...(role==='host'?{pairCode:r.pairCode,pairUntil:r.pairUntil}:{}),serverTime:clock()};
+ }
+ function writeState(r,c){if(!c.res.destroyed&&!c.res.writableEnded)c.res.write(`event: state\ndata: ${JSON.stringify(snapshot(r,c.role))}\n\n`);}
+ function broadcast(r){r.rev++;for(const c of r.clients)writeState(r,c);}
+ function remember(r){if(!r.round)return;const i=r.history.findIndex(x=>x.id===r.round.id);const row={...r.round};if(i<0)r.history.push(row);else r.history[i]=row;if(r.history.length>200)r.history.shift();}
+ function issueCode(r){let code;do{code=String(randomInt(100000,1000000));}while([...rooms.values()].some(x=>x.pairCode===code));r.pairCode=code;r.pairUntil=clock()+10*60*1000;}
+ function auth(req,id){
+  const r=rooms.get(id);if(!r||clock()-r.touched>roomTTL)throw fault(410,'房間已失效。請在大螢幕重新建立房間並配對。');
+  const value=(req.headers.authorization||'').replace(/^Bearer /,'');
+  const role=equal(value,r.hostToken)?'host':r.phoneToken&&equal(value,r.phoneToken)?'phone':null;
+  if(!role)throw fault(401,'連線憑證失效，請重新配對。');r.touched=clock();return{r,role};
+ }
+ async function body(req){let b='';for await(const chunk of req){b+=chunk;if(Buffer.byteLength(b)>16384)throw fault(413,'資料過大。');}try{return b?JSON.parse(b):{};}catch{throw fault(400,'資料格式錯誤。');}}
+ function json(res,data,status=200){res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
+ function origin(req){const host=req.headers.host||'localhost';if(!/^[a-z0-9.:[\]-]+$/i.test(host))throw fault(400,'無效主機。');return `${req.headers['x-forwarded-proto']==='https'||req.socket.encrypted?'https':'http'}://${host}`;}
+ function checkOrigin(req){const o=req.headers.origin;if(o&&o!==origin(req))throw fault(403,'不接受跨網站控制請求。');}
+ function operate(r,role,a){
+  if(typeof a.actionId!=='string'||!/^[\w-]{8,100}$/.test(a.actionId))throw fault(400,'缺少操作識別碼。');
+  const old=r.done.get(a.actionId);const fingerprint=JSON.stringify(a);
+  if(old){if(old!==fingerprint)throw fault(409,'操作識別碼不可重複使用於不同指令。');return;}
+  const q=r.round;
+  const match=()=>{if(!q||q.id!==a.roundId)throw fault(409,'本局已變更，請重新整理狀態。');};
+  const phone=()=>{if(role!=='phone')throw fault(403,'請由工作人員手機操作。');};
+  switch(a.type){
+   case 'scene':
+    if(!['house','seal'].includes(a.scene))throw fault(400,'無效場景。');
+    if(q?.phase==='running')throw fault(409,'挑戰進行中，請先完成或中止本局。');
+    r.scene=a.scene;break;
+   case 'pair-code':
+    if(role!=='host')throw fault(403,'只有大螢幕能重新配對。');
+    if(['ready','running'].includes(q?.phase))throw fault(409,'請先結束或中止目前挑戰。');
+    r.phoneToken=null;
+    for(const c of [...r.clients])if(c.role==='phone'){c.res.write('event: expired\ndata: {}\n\n');c.res.end();r.clients.delete(c);}
+    issueCode(r);break;
+   case 'prepare':
+    phone();if(q)throw fault(409,'請先由工作人員結束上一局。');
+    if(a.eligible!==true||a.exchanged!==true)throw fault(400,'請先確認資格及自願兌換。');
+    r.counter++;r.round={id:randomBytes(12).toString('hex'),number:r.counter,phase:'ready',giftGiven:false,createdAt:clock()};r.scene='seal';break;
+   case 'start':
+    phone();match();if(q.phase!=='ready')throw fault(409,'本局已開始或已結束，不能重玩。');
+    q.phase='running';q.startedReceivedAt=clock();break;
+   case 'stop':
+    phone();match();if(q.phase!=='running')throw fault(409,'本局不是計時狀態，請由工作人員確認。');
+    q.result=scoreMilliseconds(a.milliseconds);q.phase='result';q.finishedAt=clock();remember(r);break;
+   case 'abort':
+    match();if(!['ready','running'].includes(q.phase))throw fault(409,'本局已結束。');
+    q.phase='interrupted';q.reason='操作中斷，請工作人員確認；不自動重試。';q.finishedAt=clock();remember(r);break;
+   case 'gift':
+    phone();match();if(q.phase!=='result'||!q.result?.win)throw fault(409,'本局不是成功結果。');
+    if(!q.giftGiven){q.giftGiven=true;r.giftCount++;remember(r);}break;
+   case 'next':
+    match();if(['ready','running'].includes(q.phase))throw fault(409,'請先中止或完成本局。');
+    if(q.result?.win&&!q.giftGiven)throw fault(409,'請先確認成功者的小禮物已發放。');
+    r.round=null;r.scene=a.scene==='seal'?'seal':'house';break;
+   default:throw fault(400,'不支援的操作。');
+  }
+  r.done.set(a.actionId,fingerprint);if(r.done.size>800)r.done.delete(r.done.keys().next().value);broadcast(r);
+ }
  const server=http.createServer(async(req,res)=>{
-  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','DENY');
-  res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
   try{
-   const u=new URL(req.url,'http://localhost');
-   if(req.method==='GET'&&u.pathname==='/healthz')return reply(res,200,{ok:true,version:'4.0.0'});
-   if(u.pathname.startsWith('/api/')){
-    if(req.headers.origin){let h;try{h=new URL(req.headers.origin).host;}catch{fail(403,'無效來源');}if(h!==req.headers.host)fail(403,'不同網站不能操作這場遊戲。');}
-    if(req.method==='POST')limited(req,'post',200,60000);
-    if(req.method==='POST'&&u.pathname==='/api/rooms'){
-     limited(req,'create',12,3600000);if(rooms.size>=maxRooms)fail(503,'房間已滿，請稍後重試。');
-     const id=randomBytes(8).toString('hex');let code;do{code=String(randomInt(100000,1000000));}while([...rooms.values()].some(r=>r.code===code));
-     const r={id,code,secret:token(),host:token(),controller:null,pending:[],clients:new Set(),version:1,touched:now(),scene:'house',phase:'idle',round:null,stats:{rounds:0,successes:0,gifts:0},history:[]};rooms.set(id,r);return reply(res,201,{room:id,token:r.host,state:view(r,'host')});
-    }
-    if(req.method==='POST'&&u.pathname==='/api/join'){
-     limited(req,'join',20,60000);const d=await readJSON(req),r=[...rooms.values()].find(x=>x.code===d.code||x.id===d.room);
-     if(!r||!eq(r.secret,d.secret))fail(404,'配對邀請不正確或已失效，請重新掃描螢幕 QR。');
-     if(r.pending.length>=5)fail(429,'有太多待核准手機，請由螢幕先清除。');
-     const p={id:token(),token:token(),verify:String(randomInt(1000,10000)),created:now(),status:'pending'};r.pending.push(p);broadcast(r);return reply(res,201,{room:r.id,request:p.id,token:p.token,verify:p.verify});
-    }
-    const match=u.pathname.match(/^\/api\/rooms\/([a-f0-9]{16})(?:\/([a-z-]+))?$/);if(!match)fail(404,'找不到 API');
-    const r=rooms.get(match[1]);if(!r)fail(410,'房間已結束或服務已重啟。請在螢幕重建房間並重新配對。');const action=match[2]||'state';
-    if(req.method==='POST'&&action==='pair-status'){
-     const d=await readJSON(req);const key=(req.headers.authorization||'').replace(/^Bearer /,'');
-     if(r.controller&&eq(key,r.controller))return reply(res,200,{approved:true,state:view(r,'controller')});
-     const p=r.pending.find(x=>x.id===d.request&&eq(key,x.token));if(!p)fail(401,'配對已取消，請重新掃描。');return reply(res,200,{approved:false});
-    }
-    const role=auth(req,r);r.touched=now();
-    if(req.method==='GET'&&action==='events'){
-     if(r.clients.size>=12)fail(429,'同一房間連線數已滿。');res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.flushHeaders();
-     const c={res,role};r.clients.add(c);emit(res,'state',view(r,role));const hb=setInterval(()=>{if(!res.destroyed)res.write(': heartbeat\n\n');},10000);req.on('close',()=>{clearInterval(hb);r.clients.delete(c);});return;
-    }
-    if(req.method==='GET'&&action==='state')return reply(res,200,view(r,role));
-    if(req.method!=='POST')fail(405,'不支援此方法');const d=await readJSON(req);
-    if(action==='approve'){
-     requireHost(role);if(['ready','running'].includes(r.phase))fail(409,'本局進行中，不可更換手機。');const p=r.pending.find(x=>x.id===d.request);if(!p)fail(404,'配對請求已失效');
-     r.controller=p.token;r.pending=[];r.secret=token();for(const c of [...r.clients])if(c.role==='controller'){c.res.end();r.clients.delete(c);}broadcast(r);
-    }else if(action==='reject'){
-     requireHost(role);r.pending=r.pending.filter(x=>x.id!==d.request);broadcast(r);
-    }else if(action==='unpair'){
-     requireHost(role);if(['ready','running'].includes(r.phase))fail(409,'先中止這局再解除手機。');r.controller=null;r.pending=[];r.secret=token();for(const c of [...r.clients])if(c.role==='controller'){c.res.end();r.clients.delete(c);}broadcast(r);
-    }else if(action==='scene'){
-     if(!['house','seal'].includes(d.scene))fail(400,'不正確場景');if(['ready','running'].includes(r.phase))fail(409,'本局進行中，不能切換。');r.scene=d.scene;broadcast(r);
-    }else if(action==='arm'){
-     if(role!=='controller')fail(403,'請在已配對的工作人員手機開局。');
-     if(r.phase==='ready'&&d.requestId===r.round?.requestId)return reply(res,200,view(r,role));
-     if(r.phase!=='idle')fail(409,'請先由工作人員結束上一局。');if(d.eligible!==true||d.exchange!==true)fail(400,'請確認首次成功與自願兌換。');if(!/^[a-f0-9-]{16,80}$/i.test(d.requestId||''))fail(400,'缺少開局識別碼');
-     r.round={id:token(),requestId:d.requestId,number:++r.stats.rounds,created:now(),result:null,giftClaimed:false};r.phase='ready';r.scene='seal';broadcast(r);
-    }else if(action==='start'){
-     if(role!=='controller')fail(403,'請用手機開始');if(!r.round||d.roundId!==r.round.id)fail(409,'這不是目前的回合');
-     if(r.phase==='running')return reply(res,200,view(r,role));if(r.phase!=='ready')fail(409,'這局已使用或尚未開放');r.round.startAt=now();r.phase='running';broadcast(r);
-    }else if(action==='finish'){
-     if(role!=='controller')fail(403,'請用手機停止');if(!r.round||d.roundId!==r.round.id)fail(409,'這不是目前的回合');
-     if(r.phase==='result')return reply(res,200,view(r,role));if(r.phase!=='running')fail(409,'本局未計時或已中止');
-     let result;try{result=score(d.elapsedMs);}catch{fail(400,'無效的計時結果');}
-     if(Math.abs((now()-r.round.startAt)-d.elapsedMs)>5000){interrupt(r,'連線延遲過大，請工作人員判定，不自動算失敗。');}
-     else{r.round.result=result;r.phase='result';if(result.success)r.stats.successes++;r.history.push({number:r.round.number,...result,giftClaimed:false});r.history=r.history.slice(-200);broadcast(r);}
-    }else if(action==='interrupt'){
-     if(!r.round||d.roundId!==r.round.id)fail(409,'這不是目前的回合');interrupt(r,'裝置切至背景、離線或工作人員中止。請工作人員判定。');
-    }else if(action==='gift'){
-     if(r.phase!=='result'||!r.round?.result?.success)fail(409,'本局未成功，不能登記禮物');if(d.roundId!==r.round.id)fail(409,'這不是目前的回合');
-     if(!r.round.giftClaimed){r.round.giftClaimed=true;r.stats.gifts++;const row=r.history.find(x=>x.number===r.round.number);if(row)row.giftClaimed=true;broadcast(r);}
-    }else if(action==='next'){
-     if(d.confirmed!==true)fail(400,'請確認下一位參加者');if(['running','ready'].includes(r.phase))fail(409,'請先中止進行中的回合');
-     if(r.round&&d.roundId!==r.round.id)fail(409,'請重新整理回合狀態');r.round=null;r.phase='idle';r.scene='house';broadcast(r);
-    }else if(action==='ping'){/* keeps connection/liveness observable, no state mutation */}
-    else fail(404,'找不到操作');return reply(res,200,view(r,role));
+   const url=new URL(req.url,'http://localhost');const p=url.pathname;
+   if(req.method==='POST'){checkOrigin(req);if(!(req.headers['content-type']||'').includes('application/json'))throw fault(415,'請使用 JSON。');}
+   if(p==='/healthz'){json(res,{ok:true,version:APP_VERSION,apiProtocol:API_PROTOCOL});return;}
+   if(p==='/api/config'&&req.method==='GET'){json(res,{pinRequired:!!eventPin,version:APP_VERSION,apiProtocol:API_PROTOCOL});return;}
+   if(p==='/api/rooms'&&req.method==='POST'){
+    limit(req,'create',20);const a=await body(req);if(eventPin&&!equal(a.pin,eventPin))throw fault(403,'活動密碼不正確。');
+    if(rooms.size>=100)throw fault(503,'房間已滿，請稍後再試。');
+    const id=randomBytes(8).toString('hex');const r={id,hostToken:token(),phoneToken:null,pairCode:null,pairUntil:0,touched:clock(),rev:1,scene:'house',round:null,counter:0,giftCount:0,history:[],clients:new Set(),done:new Map()};issueCode(r);rooms.set(id,r);
+    json(res,{id,token:r.hostToken,state:snapshot(r,'host')},201);return;
    }
-   if(!['GET','HEAD'].includes(req.method))fail(405,'不支援此方法');const routes={'/':'index.html','/display':'display.html','/phone':'phone.html'};
-   let pathname;try{pathname=decodeURIComponent(u.pathname);}catch{fail(400,'無效路徑');}const rel=routes[pathname]||pathname.replace(/^\//,'');const file=path.resolve(ROOT,rel);if(!file.startsWith(ROOT+path.sep)||rel.startsWith('.'))fail(403,'禁止存取');
-   let data;try{if(!(await stat(file)).isFile())fail(404,'找不到檔案');data=await readFile(file);}catch{fail(404,'找不到檔案');}
-   const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.mp3':'audio/mpeg','.json':'application/json'};
-   res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache','Content-Length':data.length});res.end(req.method==='HEAD'?undefined:data);
-  }catch(err){if(!res.headersSent)reply(res,err.status||500,{error:err.status?err.message:'伺服器忙碌，請重試。'});else res.end();}
+   if(p==='/api/pair'&&req.method==='POST'){
+    limit(req,'pair',12);const a=await body(req);const r=[...rooms.values()].find(x=>x.pairCode===a.code&&x.pairUntil>clock()&&clock()-x.touched<roomTTL);
+    if(!r)throw fault(404,'配對碼不正確、已使用或已到期；請查看大螢幕。');
+    r.phoneToken=token();r.pairCode=null;r.pairUntil=0;r.touched=clock();broadcast(r);json(res,{id:r.id,token:r.phoneToken,state:snapshot(r,'phone')});return;
+   }
+   const m=p.match(/^\/api\/rooms\/([a-f0-9]{16})\/(state|events|action|pairing)$/);
+   if(m){
+    const{r,role}=auth(req,m[1]);const route=m[2];
+    if(route==='state'&&req.method==='GET'){json(res,snapshot(r,role));return;}
+    if(route==='pairing'&&req.method==='GET'){
+     if(role!=='host')throw fault(403,'僅大螢幕可取得配對資料。');
+     const phoneURL=origin(req)+'/phone'+(r.pairCode?'#code='+r.pairCode:'');
+     json(res,{phoneURL,code:r.pairCode,expires:r.pairUntil,svg:r.pairCode?makeQR(phoneURL):null});return;
+    }
+    if(route==='action'&&req.method==='POST'){limit(req,'action:'+r.id,240);operate(r,role,await body(req));json(res,snapshot(r,role));return;}
+    if(route==='events'&&req.method==='GET'){
+     if(r.clients.size>=12)throw fault(429,'此房間開啟太多分頁。');
+     res.writeHead(200,{...headers,'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});res.flushHeaders();
+     const c={res,role};r.clients.add(c);broadcast(r);
+     const h=setInterval(()=>{if(!res.destroyed){res.write('event: ping\ndata: {}\n\n');r.touched=clock();}},15000);h.unref();
+     req.on('close',()=>{clearInterval(h);r.clients.delete(c);broadcast(r);});return;
+    }
+    throw fault(405,'不支援的請求方式。');
+   }
+   if(p.startsWith('/api/'))throw fault(404,'找不到 API；請確認 server.mjs 與 public/ 已一起更新為 v4.2.1，並重新部署。');
+   if(!['GET','HEAD'].includes(req.method))throw fault(405,'不支援的請求方式。');
+   const routes={'/':'index.html','/display':'display.html','/phone':'phone.html','/guide':'guide.html'};
+   const rel=routes[p]||decodeURIComponent(p).replace(/^\/+/, '');
+   const f=path.resolve(ROOT,rel);if(!f.startsWith(ROOT+path.sep))throw fault(403,'無法存取此路徑。');
+   const info=await stat(f).catch(()=>null);if(!info?.isFile())throw fault(404,'找不到檔案。');
+   const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.mp3':'audio/mpeg','.json':'application/json; charset=utf-8'};
+   res.writeHead(200,{...headers,'Content-Type':types[path.extname(f)]||'application/octet-stream','Content-Length':info.size,'Cache-Control':'no-store'});res.end(req.method==='HEAD'?undefined:await readFile(f));
+  }catch(err){if(!res.headersSent)json(res,{error:err.status?err.message:'系統暫時無法處理，請重試。'},err.status||500);else res.end();}
  });
- const timer=setInterval(()=>{for(const[id,r]of rooms){r.pending=r.pending.filter(p=>now()-p.created<180000);if(r.phase==='running'&&now()-r.round.startAt>45000)interrupt(r,'本局逾時或連線中斷，請工作人員判定。');if(now()-r.touched>12*3600000){for(const c of r.clients)c.res.end();rooms.delete(id);}}for(const[k,v]of limits)if(now()>v.until)limits.delete(k);},1000);timer.unref();
- const close=()=>{clearInterval(timer);for(const r of rooms.values())for(const c of r.clients)c.res.end();return new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});};
- return {server,close,rooms};
+ const housekeeping=setInterval(()=>{
+  for(const [id,r] of rooms){if(clock()-r.touched>roomTTL){for(const c of r.clients)c.res.end();rooms.delete(id);continue;}
+   if(r.round?.phase==='running'&&clock()-r.round.startedReceivedAt>125000){r.round.phase='interrupted';r.round.reason='超過兩分鐘未收到結果，請工作人員確認。';r.round.finishedAt=clock();remember(r);broadcast(r);}}
+  for(const[k,v]of limits)if(clock()-v.start>120000)limits.delete(k);
+ },5000);housekeeping.unref();
+ server.on('close',()=>{clearInterval(housekeeping);for(const r of rooms.values())for(const c of r.clients)c.res.end();});
+ server.shutdown=()=>{for(const r of rooms.values())for(const c of r.clients)c.res.end();return new Promise(resolve=>{server.close(resolve);server.closeIdleConnections?.();});};
+ return server;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const app=createApp();const port=Number(process.env.PORT||3000);app.server.listen(port,'0.0.0.0',()=>console.log(`麗喆303班 live server ready on port ${port}`));
- for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>app.close().then(()=>process.exit(0)));
+ const server=createApp();const port=Number(process.env.PORT||3000);
+ server.listen(port,'0.0.0.0',()=>console.log(`麗喆303班同步服務 v4.2.1 啟動：port ${port} /display /phone`));
+ process.on('SIGTERM',()=>{server.shutdown().finally(()=>process.exit(0));setTimeout(()=>process.exit(0),5000).unref();});
 }

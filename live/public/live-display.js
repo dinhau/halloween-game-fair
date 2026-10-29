@@ -34,7 +34,7 @@
   $('live-qr').innerHTML=pairData.svg||'';$('live-code').textContent=pairData.code||'已配對';$('live-phone-url').textContent=location.origin+'/phone';
   $('live-pair-note').textContent=pairData.code?'僅供工作人員掃描。配對碼限用一次，10 分鐘有效。':'手機已配對。切勿再用舊 QR code 加入。';
  }
- async function openPanel(){try{if(!panel.open)panel.showModal();$('live-error').textContent='';await pairing();}catch(e){err(e);}}
+ async function openPanel(){try{if(!panel.open)panel.showModal();$('live-error').textContent='';const c=await Live.ensureApi();if($('live-api-version'))$('live-api-version').textContent='同步伺服器 v'+c.version+' · API 已確認';await pairing();}catch(e){err(e);}}
  $('live-open').onclick=openPanel;$('live-close').onclick=()=>panel.close();$('live-skip').onclick=()=>panel.close();
  $('create-room').onclick=async()=>{const b=$('create-room');b.disabled=true;try{const c=await Live.request('/api/rooms',{method:'POST',data:{pin:$('event-pin').value}});session.adopt(c);await pairing();}catch(e){err(e);}finally{b.disabled=false;}};
  $('live-repair').onclick=async()=>{if(!confirm('重新配對會讓原手機失去控制權。確定更換手機？'))return;try{await session.action('pair-code');await pairing();}catch(e){err(e);}};
@@ -43,6 +43,6 @@
  // Capture existing controls before the standalone handlers, preserving F/M/A/H.
  document.addEventListener('click',e=>{if(e.target.closest('#phone-entry')){e.preventDefault();e.stopImmediatePropagation();openPanel();}else if(e.target.closest('#scene-toggle')&&session.creds){e.preventDefault();e.stopImmediatePropagation();scene(state?.scene==='seal'?'house':'seal');}},true);
  document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||e.repeat||e.target.matches('input,textarea,select')||document.querySelector('dialog[open]'))return;const k=e.key.toLowerCase();if(k==='k'){e.preventDefault();e.stopImmediatePropagation();openPanel();}else if(session.creds&&['s','g'].includes(k)){e.preventDefault();e.stopImmediatePropagation();scene(k==='g'?'house':state?.scene==='seal'?'house':'seal');}},true);
- Live.request('/api/config').then(c=>{$('pin-label').hidden=!c.pinRequired;}).catch(()=>{});
+ Live.ensureApi().then(c=>{$('pin-label').hidden=!c.pinRequired;if($('live-api-version'))$('live-api-version').textContent='同步伺服器 v'+c.version+' · API 已確認';}).catch(err);
  if(session.creds){session.refresh().then(()=>session.connect()).catch(()=>{session.clear();openPanel();});}else openPanel();
 })();

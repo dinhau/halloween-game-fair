@@ -1,0 +1,224 @@
+
+> lizhe-303-halloween-live@4.2.1 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: API compatibility: health and config expose the same explicit protocol
+ok 1 - API compatibility: health and config expose the same explicit protocol
+  ---
+  duration_ms: 125.492276
+  type: 'test'
+  ...
+# Subtest: API compatibility: actual frontend creates id-based room and retrieves pairing QR
+ok 2 - API compatibility: actual frontend creates id-based room and retrieves pairing QR
+  ---
+  duration_ms: 120.95489
+  type: 'test'
+  ...
+# Subtest: API compatibility: real client full success, one gift, next participant
+ok 3 - API compatibility: real client full success, one gift, next participant
+  ---
+  duration_ms: 178.247409
+  type: 'test'
+  ...
+# Subtest: API compatibility: real client failed round is shown and cannot claim gift
+ok 4 - API compatibility: real client failed round is shown and cannot claim gift
+  ---
+  duration_ms: 71.853156
+  type: 'test'
+  ...
+# Subtest: API compatibility: legacy server blocked before POST, not undefined/pairing
+ok 5 - API compatibility: legacy server blocked before POST, not undefined/pairing
+  ---
+  duration_ms: 9.971397
+  type: 'test'
+  ...
+# Subtest: API compatibility: old health version without protocol is rejected
+ok 6 - API compatibility: old health version without protocol is rejected
+  ---
+  duration_ms: 5.205564
+  type: 'test'
+  ...
+# Subtest: API compatibility: failed config lookup is retryable
+ok 7 - API compatibility: failed config lookup is retryable
+  ---
+  duration_ms: 19.357825
+  type: 'test'
+  ...
+# Subtest: API compatibility: wrong static-site HTML generates actionable error
+ok 8 - API compatibility: wrong static-site HTML generates actionable error
+  ---
+  duration_ms: 6.87461
+  type: 'test'
+  ...
+# Subtest: API compatibility: invalid room response cannot be stored or used in URL
+ok 9 - API compatibility: invalid room response cannot be stored or used in URL
+  ---
+  duration_ms: 26.377418
+  type: 'test'
+  ...
+# Subtest: API compatibility: malformed saved credentials are discarded
+ok 10 - API compatibility: malformed saved credentials are discarded
+  ---
+  duration_ms: 14.043012
+  type: 'test'
+  ...
+# Subtest: API compatibility: invalid pairing code keeps the original useful message
+ok 11 - API compatibility: invalid pairing code keeps the original useful message
+  ---
+  duration_ms: 28.892132
+  type: 'test'
+  ...
+# Subtest: API compatibility: display and phone link to matching scripts, RWD retained
+ok 12 - API compatibility: display and phone link to matching scripts, RWD retained
+  ---
+  duration_ms: 365.122628
+  type: 'test'
+  ...
+# Subtest: rounding boundary 9494
+ok 13 - rounding boundary 9494
+  ---
+  duration_ms: 5.887247
+  type: 'test'
+  ...
+# Subtest: rounding boundary 9495
+ok 14 - rounding boundary 9495
+  ---
+  duration_ms: 0.950936
+  type: 'test'
+  ...
+# Subtest: rounding boundary 9500
+ok 15 - rounding boundary 9500
+  ---
+  duration_ms: 1.400159
+  type: 'test'
+  ...
+# Subtest: rounding boundary 10000
+ok 16 - rounding boundary 10000
+  ---
+  duration_ms: 1.454029
+  type: 'test'
+  ...
+# Subtest: rounding boundary 10500
+ok 17 - rounding boundary 10500
+  ---
+  duration_ms: 0.374061
+  type: 'test'
+  ...
+# Subtest: rounding boundary 10504
+ok 18 - rounding boundary 10504
+  ---
+  duration_ms: 0.196248
+  type: 'test'
+  ...
+# Subtest: rounding boundary 10505
+ok 19 - rounding boundary 10505
+  ---
+  duration_ms: 0.230342
+  type: 'test'
+  ...
+# Subtest: rounding boundary 300
+ok 20 - rounding boundary 300
+  ---
+  duration_ms: 0.174789
+  type: 'test'
+  ...
+# Subtest: reject invalid timing values
+ok 21 - reject invalid timing values
+  ---
+  duration_ms: 3.649768
+  type: 'test'
+  ...
+# Subtest: single chance, one gift, success workflow
+ok 22 - single chance, one gift, success workflow
+  ---
+  duration_ms: 295.10767
+  type: 'test'
+  ...
+# Subtest: failure cannot claim gift
+ok 23 - failure cannot claim gift
+  ---
+  duration_ms: 87.275024
+  type: 'test'
+  ...
+# Subtest: both eligibility confirmations required
+ok 24 - both eligibility confirmations required
+  ---
+  duration_ms: 30.263848
+  type: 'test'
+  ...
+# Subtest: idempotent retry does not repeat stop or gift
+ok 25 - idempotent retry does not repeat stop or gift
+  ---
+  duration_ms: 68.729177
+  type: 'test'
+  ...
+# Subtest: reload preserves ready/result and interruption cannot restart
+ok 26 - reload preserves ready/result and interruption cannot restart
+  ---
+  duration_ms: 77.90156
+  type: 'test'
+  ...
+# Subtest: pair code one use, phone token rotation, authentication
+ok 27 - pair code one use, phone token rotation, authentication
+  ---
+  duration_ms: 59.006233
+  type: 'test'
+  ...
+# Subtest: phone cannot see host credentials or pairing code
+ok 28 - phone cannot see host credentials or pairing code
+  ---
+  duration_ms: 20.571597
+  type: 'test'
+  ...
+# Subtest: SSE delivers state to independent display client
+ok 29 - SSE delivers state to independent display client
+  ---
+  duration_ms: 38.350499
+  type: 'test'
+  ...
+# Subtest: host pairing QR is self-hosted and no auth token in URL
+ok 30 - host pairing QR is self-hosted and no auth token in URL
+  ---
+  duration_ms: 63.180696
+  type: 'test'
+  ...
+# Subtest: optional event pin protects creation
+ok 31 - optional event pin protects creation
+  ---
+  duration_ms: 23.812778
+  type: 'test'
+  ...
+# Subtest: static routes and no server source exposure
+ok 32 - static routes and no server source exposure
+  ---
+  duration_ms: 117.028881
+  type: 'test'
+  ...
+# Subtest: cross-origin writes rejected
+ok 33 - cross-origin writes rejected
+  ---
+  duration_ms: 25.029507
+  type: 'test'
+  ...
+# Subtest: expired rooms require re-pairing
+ok 34 - expired rooms require re-pairing
+  ---
+  duration_ms: 19.873606
+  type: 'test'
+  ...
+# Subtest: QR generator produces valid grid SVG
+ok 35 - QR generator produces valid grid SVG
+  ---
+  duration_ms: 15.128882
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 35
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1368.589672

@@ -109,7 +109,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
 
 </style>
 <link rel="stylesheet" href="/live-display.css">
-<link rel="stylesheet" href="/display-rwd.css?v=4.2.0">
+<link rel="stylesheet" href="/display-rwd.css?v=4.2.1">
 </head>
 <body data-motion="on" data-hidden="no" data-scene="house">
 <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
@@ -238,7 +238,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
  <button id="sound-settings" type="button" aria-haspopup="dialog">音樂設定</button>
  <button id="motion" type="button" aria-pressed="true">動畫：開<span class="key">A</span></button>
  <button id="print" type="button">列印靜態版</button>
- <span id="layout-info" class="layout-info" aria-live="polite" title="v4.2.0｜依瀏覽器可用寬高自動排版，不會重整遊戲">橫式・自動</span><span class="controls-hint">全螢幕後自動隱藏<br>移動滑鼠即可叫出</span>
+ <span id="layout-info" class="layout-info" aria-live="polite" title="v4.2.1｜依瀏覽器可用寬高自動排版，不會重整遊戲">橫式・自動</span><span class="controls-hint">全螢幕後自動隱藏<br>移動滑鼠即可叫出</span>
 </nav>
 
 <dialog id="audio-settings" class="audio-dialog" aria-labelledby="audio-settings-title">
@@ -250,7 +250,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
  <div class="setting"><label for="fx-volume">魔法音效音量 · 已加強輸出</label><div class="slider-row"><input type="range" id="fx-volume" min="0" max="100" value="85" aria-label="魔法音效音量"><output id="fx-volume-out">85%</output></div></div>
  <div class="setting"><label for="fx-frequency">魔法音效出現頻率</label><select id="fx-frequency"><option value="lively" selected>熱鬧 · 約每 2～4 秒（預設）</option><option value="balanced">適中 · 約每 4～6 秒</option><option value="gentle">舒緩 · 約每 8～12 秒</option></select><p class="track-name">開啟聲音後約 1 秒先播放一次；短音效輪流出現，不會連續堆疊。</p></div>
  <div class="setting"><label for="audio-file">換成自己喜歡的音樂</label><div class="upload-actions"><button type="button" id="choose-audio" class="accent">選擇本機音樂</button><button type="button" id="restore-audio">恢復內建配樂</button></div><input id="audio-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" hidden><p id="track-name" class="track-name">目前：小鬼音樂盒（約 59 秒，循環播放）</p></div>
- <p class="local-note">自選音樂只在這台裝置播放，不會上傳；重新開啟網頁需重新選檔。建議 MP3 或 WAV、20 MB 以內，請使用已取得使用權的音樂。<br>展示排版 v4.2.0｜橫直自動切換，不必重新配對。<br>先用低音量試聽，讓現場老師說話仍然清楚。預設靜音，按下「音效：關」才會開始。</p>
+ <p class="local-note">自選音樂只在這台裝置播放，不會上傳；重新開啟網頁需重新選檔。建議 MP3 或 WAV、20 MB 以內，請使用已取得使用權的音樂。<br>展示排版 v4.2.1｜橫直自動切換，不必重新配對。<br>先用低音量試聽，讓現場老師說話仍然清楚。預設靜音，按下「音效：關」才會開始。</p>
  <footer><button type="button" id="dialog-audio">開始試聽</button><button type="button" id="done-settings" class="accent">完成</button></footer>
 </dialog>
 
@@ -258,7 +258,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
 <button class="controls-toggle" id="controls-toggle" type="button" aria-label="顯示或隱藏操作列" title="操作列（H）">⚙</button>
 <div class="status" id="status" role="status" aria-live="polite"></div>
 <noscript><div class="noscript">請啟用 JavaScript，才能使用全螢幕、畫面縮放及音效。</div></noscript>
-<script src="/display-rwd.js?v=4.2.0"></script>
+<script src="/display-rwd.js?v=4.2.1"></script>
 <script>
 'use strict';
 (()=>{
@@ -474,7 +474,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
  <p id="live-room-info">麗喆 303 班 · 工作人員控制室</p>
  <div id="live-create-box"><p>建立一個專屬房間。手機按下停止後，這台螢幕就會揭曉結果。</p><label id="pin-label" hidden>活動密碼<input id="event-pin" type="password" autocomplete="off"></label><button class="accent" id="create-room">建立連線房間</button><button id="live-skip">先看玩法</button></div>
  <div id="live-pair-box" hidden><div class="pair-grid"><div id="live-qr" class="pair-qr"></div><div><small>工作人員手機掃碼，或輸入配對碼</small><div class="pair-code" id="live-code"></div><div class="pair-url" id="live-phone-url"></div></div></div><p id="live-pair-note"></p><button id="live-copy">複製手機連結</button><button id="live-repair">更換手機／更新配對碼</button><button id="live-close" class="accent">開始展示</button></div>
- <p class="live-error" id="live-error" role="status"></p><small>房間資料暫存在伺服器記憶體；服務重啟後需重新配對。一次只配對一台工作人員手機。</small>
+ <p id="live-api-version" role="status" style="font-size:14px;color:#e8d9ff">正在檢查同步伺服器…</p><p class="live-error" id="live-error" role="status"></p><small>房間資料暫存在伺服器記憶體；服務重啟後需重新配對。一次只配對一台工作人員手機。</small>
 </dialog>
 <section id="live-result" class="live-show" hidden aria-live="polite" aria-label="手機挑戰即時結果">
  <div id="live-confetti" class="live-confetti" aria-hidden="true"></div>
@@ -482,7 +482,7 @@ body[data-scene="house"] #hidden-board,body[data-scene="seal"] #board{display:no
  <svg id="live-ghost" class="live-ghost" viewBox="0 0 110 125" aria-hidden="true"><use href="#friendly-ghost"/></svg>
  <div id="live-score" class="live-score"><span id="live-seconds"></span><small>秒</small></div><p class="live-message" id="live-message"></p><p class="live-detail" id="live-detail"></p><div class="live-small-note" id="live-footer-note"></div>
 </section>
-<script src="/live-client.js"></script><script src="/live-display.js"></script>
+<script src="/live-client.js?v=4.2.1"></script><script src="/live-display.js?v=4.2.1"></script>
 
 </body>
 </html>
